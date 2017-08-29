@@ -1,4 +1,6 @@
 # bugreport
+This tool help with collecting information on bugs, you can use this tool to generate a report on how many bugs were processed 
+during a given timeframe. You can generate a quick summary to show you the number of fix-released, fix-commited, in-progress etc. It also displays some statistics like how long the bug was active, how long it was dormant/inactive etc that might come handy in triaging bugs reported for your project.
 
 # How to invoke the tool:
 ## Summary only:
