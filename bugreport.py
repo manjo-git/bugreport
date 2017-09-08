@@ -8,12 +8,20 @@ from optparse import OptionParser
 from re import compile
 from datetime import datetime as dt
 from collections import defaultdict as coldict
+from uuid import uuid4 as uid
+from pwd import getpwuid as getname
 import numpy as np
 import os
 import sys
+import pwd
+try:
+    import txt2tags
+except:
+    print sys.exc_info()
+    print "\nsudo apt install txt2tags"
 
 
-def gen_bug_report(lp, lp_bugs, project, verbose):
+def gen_bug_report(lp, lp_bugs, project, searchtags, verbose):
     bug_summary_info = coldict(dict)
     bug_details_info = coldict(dict)
     url = compile('https://api.launchpad.net/1.0/~|/')
@@ -27,47 +35,46 @@ def gen_bug_report(lp, lp_bugs, project, verbose):
         else:
             bug_summary_info[task.importance][task.status] = 1
 
-        if '#Bugs Processed' in bug_summary_info[task.importance]:
-            bug_summary_info[task.importance]['#Bugs Processed'] += 1
-        else:
-            bug_summary_info[task.importance]['#Bugs Processed'] = 1
+        if task.bug.id not in bug_details_info[task.importance]:
+            if '#Bugs Processed' in bug_summary_info[task.importance]:
+                bug_summary_info[task.importance]['#Bugs Processed'] += 1
+            else:
+                bug_summary_info[task.importance]['#Bugs Processed'] = 1
+            if searchtags is not None:
+                for tags in searchtags.split(','):
+                    if tags in task.bug.tags:
+                        tag_name = '#%s tags' % tags
+                        if tag_name in bug_summary_info[task.importance]:
+                            bug_summary_info[task.importance][tag_name] += 1
+                        else:
+                            bug_summary_info[task.importance][tag_name] = 1
 
-        if '#Bugs Closed' not in bug_summary_info[task.importance]:
-            bug_summary_info[task.importance]['#Bugs Closed'] = 0
+        if project is not None:
+            if '#Bugs Closed' not in bug_summary_info[task.importance]:
+                bug_summary_info[task.importance]['#Bugs Closed'] = 0
 
         # A bug could affect multiple projects, we care only whether
         # the project we are tracking is complete.
         lp_bug_tasks = lp.bugs[task.bug.id].bug_tasks
         for bugtask in lp_bug_tasks:
-            if bugtask.bug_target_name in project:
+            if project is not None and bugtask.bug_target_name in project:
                 bug_is_complete = bugtask.is_complete
             if verbose is True:
                 bug_subtask.append(
                     '%s: %s' % (bugtask.bug_target_name, bugtask.status))
 
-        if bug_is_complete is True:
+        if project is not None and bug_is_complete is True:
             if '#Bugs Closed' in bug_summary_info[task.importance]:
                 bug_summary_info[task.importance]['#Bugs Closed'] += 1
 
         if verbose is True:
-            inactive_days = 0
-            if bug_is_complete is not True:
-                inactive_days = np.busday_count(
-                    task.bug.date_last_updated.strftime("%Y-%m-%d"),
-                        dt.now().strftime("%Y-%m-%d"))
-
-            active_days = np.busday_count(
-                task.bug.date_created.strftime("%Y-%m-%d"),
-                    task.bug.date_last_updated.strftime("%Y-%m-%d"))
-
             assignee = 'Unassigned' if task.assignee_link is None \
                 else url.sub('', task.assignee_link)
 
             bug_info[task.bug.id] = [
                 task.bug.date_created.strftime("%Y-%m-%d"),
                     task.bug.date_last_updated.strftime("%Y-%m-%d"),
-                    active_days,
-                    inactive_days, task.bug.message_count, assignee,
+                    task.bug.message_count, assignee,
                     "''<br>''".join(bug_subtask)]
 
             bug_details_info[task.importance].update(bug_info)
@@ -78,10 +85,10 @@ def gen_bug_report(lp, lp_bugs, project, verbose):
 def main():
     parser = OptionParser(usage='usage: %prog [options]', version='%prog 1.0')
     parser.add_option('-d', '--date', dest='start_date', action='store',
-                      default='2017-01-01',
+                      default=None,
                       type='string', help='start date for bug search')
     parser.add_option('-p', '--project', dest='project', action='store',
-                      default='ubuntu-power-systems',
+                      default=None,
                       type='string', help='name of the launchpad project')
     parser.add_option('-s', '--status', dest='bug_status', action='store',
                       default=('New,Opinion,Invalid,Won\'t Fix,Expired,'
@@ -101,7 +108,9 @@ def main():
     parser.add_option('-v', '--verbose', dest='verbose', action='store_true',
                       help='verbose output with bug details')
     parser.add_option('-a', '--author', dest='author',
-                      default='Manoj Iyer manoj.iyer@canonical.com',
+                      default='%s %s' % (
+                          getname(os.getuid())[4].strip(','),
+                          os.environ.get('DEBEMAIL')),
                       help='"Firstname Lastname first.last@canonical.com"')
     parser.add_option('-o', '--outfile', dest='outfile',
                       help='filename to store output (default stdout)')
@@ -115,36 +124,35 @@ def main():
     cachedir = os.path.expanduser('~/.launchpadlib/cache')
 
     launchpad = Launchpad.login_with(script_name, LPNET_SERVICE_ROOT, cachedir)
-    lp_project = launchpad.projects[options.project]
+    lp_object = launchpad.projects[options.project] if options.project is not None else launchpad.bugs
 
     lp_bugs = [
-        task for task in lp_project.searchTasks(
+        task for task in lp_object.searchTasks(
             created_since=None if options.start_date is None else
-                        dt.strptime(options.start_date,
-                                    '%Y-%m-%d').isoformat(),
-                status=options.bug_status.split(','),
-                importance=options.bug_importance.title().replace(
-                    ' ', '').split(','),
-                tags=None if options.bug_tag is None else
-                        options.bug_tag.split(','),
-                tags_combinator=options.bug_tag_modify.title())]
+                    dt.strptime(options.start_date,
+                                '%Y-%m-%d').isoformat(),
+            status=options.bug_status.split(','),
+            importance=options.bug_importance.title().replace(
+                ' ', '').split(','),
+            tags=None if options.bug_tag is None else
+                    options.bug_tag.split(','),
+            tags_combinator=options.bug_tag_modify.title())]
 
     with (open(options.outfile, 'w') if options.outfile else sys.stdout) as f:
-        f.write("Bug activity in %s project since %s\n\n\n" % (options.project,
-                options.start_date))
-        f.write(" || {:<35} | {:<20} |\n".format('Created By', 'Date'))
-        f.write("  | [%s]" % (options.author) + " | %%mtime(%A %B %d, %Y) |\n")
+        f.write("Bug activity report since %s\n\n\n" % (options.start_date))
+        f.write(" || {:<38} | {:<20} |\n".format('Created By', 'Date'))
+        f.write("  | [%s] | %s |\n" % 
+            (options.author, dt.today().strftime('%A %B %d, %Y')))
 
         if f is not sys.stdout and options.verbose is True:
-            sys.stdout.write("Bug activity in %s project since %s\n" %
-                             (options.project, options.start_date))
-            sys.stdout.write("Generating detailed report in %s \n" %
-                             options.outfile)
-            sys.stdout.write("Please wait...\n")
+            sys.stdout.write("Bug activity report since %s\n" %
+                             (options.start_date))
+            sys.stdout.write("Generating detailed report please wait...\n");
             sys.stdout.flush()
 
         summary_report, detailed_report = gen_bug_report(launchpad, lp_bugs,
                                                          options.project,
+                                                         options.bug_tag,
                                                          options.verbose)
 
         for k, v in sorted(summary_report.iteritems()):
@@ -154,8 +162,8 @@ def main():
                 f.write("| {:<15} | {:<8} |\n".format(x, y))
             if options.verbose is True:
                 f.write("== Details on %s bugs ==\n" % k)
-                f.write("|| Bug# | Created | Last Updated | Active Period "
-                        "| Dormant Period | #Comments | Assignee | Status |\n")
+                f.write("|| Bug# | Created | Last Updated | "
+                        "#Comments | Assignee | Status |\n")
 
                 for a, b in sorted(detailed_report[k].iteritems(),
                                    key=lambda item: item[1][1], reverse=True):
@@ -164,6 +172,24 @@ def main():
 
         if f is not sys.stdout:
             f.close()
+            htmlconv = str(uid())
+            with open(htmlconv, 'w') as tf:
+                tf.write("""%!options: --toc-level 4
+%!postproc(html): '(?i)(<TH)' '\\1 style="text-align:left;"'
+%!postproc(html): '(?i)(<TR)' '\\1 style="font-size:11; font-family:ubuntu,sans-serif; text-align:left;"'
+%!postproc(html): <HEAD>      '<HEAD>\\n<STYLE TYPE="text/css">\\n</STYLE>'
+%!postproc(html): (</STYLE>)  'h1 {color:#740946; font-size:16; font-family:ubuntu,sans-serif;} \\n\\1'
+%!postproc(html): (</STYLE>)  'h2 {color:#740946; font-size:14; font-family:ubuntu,sans-serif;} \\n\\1'
+%!postproc(html): (</STYLE>)  'h3 {color:#740946; font-size:12; font-family:ubuntu,sans-serif;} \\n\\1'
+%!postproc(html): (</STYLE>)  'h4 {color:#740946; font-size:11; font-family:ubuntu,sans-serif;} \\n\\1'
+%!postproc(html): (</STYLE>)  'body {font-size:11; font-family:ubuntu,sans-serif;;} \\n\\1'\n""")
+                tf.flush()
+                tf.close()
+
+                cmd='-t html -C %s -i %s' % (htmlconv, options.outfile)
+                txt2tags.exec_command_line(cmd.split())
+            os.remove(htmlconv)
+            os.remove(options.outfile)
 
 
 if __name__ == '__main__':
