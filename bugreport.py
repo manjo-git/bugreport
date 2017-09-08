@@ -164,7 +164,7 @@ def main():
             if options.verbose is True:
                 f.write("== Details on %s bugs ==\n" % k)
                 f.write("|| Bug# | Created | Last Updated | "
-                        "#Comments | Assignee | Status |\n")
+                        "#Comments | Assignee | Project: Status |\n")
 
                 for a, b in sorted(detailed_report[k].iteritems(),
                                    key=lambda item: item[1][1], reverse=True):
