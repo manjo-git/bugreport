@@ -8,12 +8,19 @@ This tool generates bug reports for bugs in a given project or bugs reported in 
 ## Summary only:
 You can generate a summary report for given project or all bugs in launchpad.net since 'start date'
 1. Bug report for 'project' since 'start date'
+
    ./bugreport.py -p project -d start date 
+
 2. Bug report for 'project' since 'start date' output to html file.
+
    ./bugreport.py -p project -d start date -o outfile
+
 3. Bug report for all bugs in launchpad.net since 'start date'
+
    ./bugreport.py -d start date
+
 4. Bug report for all bugs in launchpad.net since 'start date' for given tags
+
    ./bugreport.py -d start date -t sts,onsite
 
 ## Summary with details on bugs:
