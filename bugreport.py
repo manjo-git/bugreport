@@ -86,7 +86,8 @@ def main():
     parser = OptionParser(usage='usage: %prog [options]', version='%prog 1.0')
     parser.add_option('-d', '--date', dest='start_date', action='store',
                       default=None,
-                      type='string', help='start date for bug search')
+                      type='string', 
+                      help='start date (YYYY-MM-DD) for bug search')
     parser.add_option('-p', '--project', dest='project', action='store',
                       default=None,
                       type='string', help='name of the launchpad project')
